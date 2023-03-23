@@ -1,0 +1,8 @@
+#!/bin/sh
+
+set -e
+
+cabal build
+
+find dist-newstyle -type f -executable -name xmonad \
+     -exec mv -u '{}' "$1" ';'
