@@ -2,7 +2,7 @@
 
 set -e
 
-cabal build
+cabal build -w ghc-9.4
 
 find dist-newstyle -type f -executable -name xmonad \
      -exec mv -u '{}' "$1" ';'

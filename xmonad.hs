@@ -2,7 +2,6 @@ import Data.Char (isSpace)
 import Data.List (sort)
 import Data.Maybe (listToMaybe)
 import Data.Monoid
---import System.Taffybar.Support.PagerHints
 import XMonad
 import XMonad.Actions.CopyWindow
 import XMonad.Actions.CycleWS
@@ -10,9 +9,11 @@ import XMonad.Actions.DynamicProjects
 import XMonad.Actions.DynamicWorkspaces (renameWorkspaceByName)
 import XMonad.Actions.FindEmptyWorkspace
 import XMonad.Actions.UpdatePointer
+import XMonad.Actions.Minimize
 import XMonad.Hooks.EwmhDesktops
 import XMonad.Hooks.ManageDocks
 import XMonad.Hooks.ManageHelpers
+import XMonad.Hooks.Minimize
 import XMonad.Hooks.WorkspaceHistory
 import XMonad.Layout.Fullscreen
 import XMonad.Layout.Grid
@@ -33,6 +34,15 @@ import XMonad.Util.NoTaskbar
 import XMonad.Util.Run
 import XMonad.Util.SpawnOnce
 import XMonad.Util.WorkspaceCompare (filterOutWs)
+import XMonad.Layout.Accordion (Accordion(Accordion))
+import XMonad.Layout.BinaryColumn (BinaryColumn(BinaryColumn))
+import XMonad.Layout.BinarySpacePartition (emptyBSP)
+import XMonad.Layout.Circle (Circle(Circle))
+import XMonad.Layout.DragPane (dragPane, DragType (Horizontal))
+import XMonad.Layout.TwoPane (TwoPane(TwoPane))
+import XMonad.Layout.ThreeColumns (ThreeCol(ThreeColMid))
+import XMonad.Layout.Minimize
+import qualified XMonad.Layout.BoringWindows as BW
 
 main =
   xmonad
@@ -62,10 +72,11 @@ customConfig =
       modMask = mod5Mask,
       layoutHook = customLayout,
       manageHook = customManageHook,
+      handleEventHook = minimizeEventHook,
       logHook = customLogHook,
       startupHook = customStartupHook,
-      focusedBorderColor = "#2a9d8f",
-      normalBorderColor = "#264653"
+      focusedBorderColor = "#d69131",
+      normalBorderColor = "#68502e"
     }
     `additionalKeysP` customKeysP
     `additionalKeys` customWsKeys def
@@ -81,7 +92,7 @@ customKeysP =
     ("M-a c", spawn "CM_LAUNCHER=rofi clipmenu"),
     -- Empty workspaces functions
     ("M-S-m", tagToEmptyWorkspace),
-    ("M-m", viewEmptyWorkspace),
+    ("M-m", withFocused minimizeWindow),
     -- Scratchpads
     ("M-s k", namedScratchpadAction scratchpads "keepassxc"),
     ("M-s t", namedScratchpadAction scratchpads "term"),
@@ -92,7 +103,7 @@ customKeysP =
     ("M-r", renameWks),
     -- Workspaces navigation
     ("M-t", toggleWS' [scratchpadWs]),
-    ("M-b", historyBackward),
+    ("M-b", spawn "rofi -show windowcd"),
     -- Special keys
     ("<XF86MonBrightnessUp>", spawn "light -A 2"),
     ("<XF86MonBrightnessDown>", spawn "light -U 2"),
@@ -105,7 +116,9 @@ customKeysP =
     ("M-f", sendMessage $ Toggle FULL),
     ("M-d", spawn "rofi -show drun"),
     ("M-g", spawn "rofi -show window"),
-    ("M-c c", kill1)
+    ("M-c c", kill1),
+    ("M-j", BW.focusUp),
+    ("M-k", BW.focusDown)
   ]
 
 -- | Use the super key for workspace navigation because altgr + top row
@@ -174,14 +187,16 @@ customLayout =
   smartBorders
     . avoidStruts
     . spaced
+    . minimize
+    . BW.boringAuto
     . mkToggle (single FULL)
-    $ tiled
+    $ Tall 1 (3 / 100) (1 / 2)
+      ||| Full
+      ||| ThreeColMid 1 (3/100) (1/2)
       ||| Grid
-      ||| tabbed shrinkText tabConfig
   where
-    tiled = Tall 1 (3 / 100) (1 / 2)
     spaced = spacingRaw True (Border 0 0 0 0) True (Border 10 10 10 10) True
-
+  
 -- Definition of named scratchpads
 scratchpads :: [NamedScratchpad]
 scratchpads =
