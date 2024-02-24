@@ -1,49 +1,42 @@
+{-# OPTIONS_GHC -Wno-deferred-out-of-scope-variables #-}
+{-# LANGUAGE OverloadedStrings #-}
+
 import Data.Char (isSpace)
 import Data.List (sort)
 import Data.Maybe (listToMaybe)
-import Data.Monoid
 import XMonad
 import XMonad.Actions.CopyWindow
 import XMonad.Actions.CycleWS
 import XMonad.Actions.DynamicProjects
 import XMonad.Actions.DynamicWorkspaces (renameWorkspaceByName)
 import XMonad.Actions.FindEmptyWorkspace
-import XMonad.Actions.UpdatePointer
 import XMonad.Actions.Minimize
+import XMonad.Actions.UpdatePointer
 import XMonad.Hooks.EwmhDesktops
 import XMonad.Hooks.ManageDocks
 import XMonad.Hooks.ManageHelpers
 import XMonad.Hooks.Minimize
 import XMonad.Hooks.WorkspaceHistory
-import XMonad.Layout.Fullscreen
+import qualified XMonad.Layout.BoringWindows as BW
 import XMonad.Layout.Grid
-import XMonad.Layout.MultiToggle
-import XMonad.Layout.MultiToggle.Instances
+import XMonad.Layout.Minimize
 import XMonad.Layout.NoBorders
+import XMonad.Layout.Simplest
 import XMonad.Layout.Spacing
-import XMonad.Layout.Tabbed
+import XMonad.Layout.ThreeColumns (ThreeCol (ThreeColMid))
 import XMonad.Prompt.Input ((?+))
-import XMonad.StackSet (greedyView)
 import qualified XMonad.StackSet as W
 import XMonad.Util.EZConfig
-  ( additionalKeys,
-    additionalKeysP,
+  ( additionalKeysP,
+    removeKeysP,
   )
 import XMonad.Util.NamedScratchpad
 import XMonad.Util.NoTaskbar
 import XMonad.Util.Run
 import XMonad.Util.SpawnOnce
 import XMonad.Util.WorkspaceCompare (filterOutWs)
-import XMonad.Layout.Accordion (Accordion(Accordion))
-import XMonad.Layout.BinaryColumn (BinaryColumn(BinaryColumn))
-import XMonad.Layout.BinarySpacePartition (emptyBSP)
-import XMonad.Layout.Circle (Circle(Circle))
-import XMonad.Layout.DragPane (dragPane, DragType (Horizontal))
-import XMonad.Layout.TwoPane (TwoPane(TwoPane))
-import XMonad.Layout.ThreeColumns (ThreeCol(ThreeColMid))
-import XMonad.Layout.Minimize
-import qualified XMonad.Layout.BoringWindows as BW
 
+main :: IO ()
 main =
   xmonad
     . docks
@@ -61,9 +54,6 @@ customTerminal = "alacritty"
 scratchpadWs :: String
 scratchpadWs = "NSP"
 
-scratchWorkspace :: Project
-scratchWorkspace = Project "scratch" "~/" Nothing
-
 -- | XMonad main configuration structure
 customConfig =
   def
@@ -79,7 +69,7 @@ customConfig =
       normalBorderColor = "#68502e"
     }
     `additionalKeysP` customKeysP
-    `additionalKeys` customWsKeys def
+    `removeKeysP` ["M-e", "M-S-e"]
 
 -- | Custom key bindings & overrides
 customKeysP :: [(String, X ())]
@@ -94,9 +84,9 @@ customKeysP =
     ("M-S-m", tagToEmptyWorkspace),
     ("M-m", withFocused minimizeWindow),
     -- Scratchpads
-    ("M-s k", namedScratchpadAction scratchpads "keepassxc"),
-    ("M-s t", namedScratchpadAction scratchpads "term"),
-    ("M-s s", namedScratchpadAction scratchpads "signal"),
+    ("M-u k", namedScratchpadAction scratchpads "keepassxc"),
+    ("M-u t", namedScratchpadAction scratchpads "term"),
+    ("M-u s", namedScratchpadAction scratchpads "signal"),
     -- Workspaces
     ("M-p", createOrSwitchWks),
     ("M-S-p", shiftToWks),
@@ -113,32 +103,12 @@ customKeysP =
     -- Misc
     ("M-i", withFocused $ windows . W.sink),
     ("M-o", spawn "xset s activate"),
-    ("M-f", sendMessage $ Toggle FULL),
-    ("M-d", spawn "rofi -show drun"),
+    ("M-z", spawn "rofi -show drun"),
     ("M-g", spawn "rofi -show window"),
-    ("M-c c", kill1),
+    ("M-v", kill1),
     ("M-j", BW.focusUp),
     ("M-k", BW.focusDown)
   ]
-
--- | Use the super key for workspace navigation because altgr + top row
---  is already used for special characters
-customWsKeys :: XConfig l -> [((KeyMask, KeySym), X ())]
-customWsKeys conf =
-  [((mod4Mask, xK_semicolon), sendMessage (IncMasterN (-1)))]
-    ++ [ ((m .|. mod4Mask, k), windows $ f i)
-         | (i, k) <- zip (workspaces conf) topRow,
-           (f, m) <- [(W.greedyView, 0), (W.shift, shiftMask)]
-       ]
-    ++
-    -- mod-{z,e,r} %! Switch to physical/Xinerama screens 1, 2, or 3
-    -- mod-shift-{z,e,r} %! Move client to screen 1, 2, or 3
-    [ ((m .|. mod4Mask, key), screenWorkspace sc >>= flip whenJust (windows . f))
-      | (key, sc) <- zip [xK_z, xK_e, xK_r] [0 ..],
-        (f, m) <- [(W.view, 0), (W.shift, shiftMask)]
-    ]
-  where
-    topRow = [0x26, 0xe9, 0x22, 0x27, 0x28, 0x2d, 0xe8, 0x5f, 0xe7, 0xe0]
 
 -- | List of sequenced actions to execute when xmonad starts
 --  ewmhDesktopStartup notify ewmh compliant programs that the
@@ -146,7 +116,7 @@ customWsKeys conf =
 customStartupHook :: X ()
 customStartupHook =
   sequence_
-  [   spawnOnce "systemctl --user start xmonad-session.target", 
+    [ spawnOnce "systemctl --user start xmonad-session.target",
       spawnOnce "$HOME/.fehbg",
       spawnOnce "xss-lock -n /usr/lib/xsecurelock/dimmer -l -- xsecurelock"
     ]
@@ -155,32 +125,16 @@ customStartupHook =
 --  Filter the NSP workspace from the list exposed through ewmh.
 --  Add navigation history.
 customLogHook :: X ()
-customLogHook =
-  updatePointer (0.5, 0.5) (0.5, 0.5)
-    <+> workspaceHistoryHook
+customLogHook = updatePointer (0.5, 0.5) (0.5, 0.5) >> workspaceHistoryHook
 
 -- | Handle specific window placement. ManageHooks are applied right to left
 --  1: Apply scratchpad hooks
 --  2: Handle Firefox PictureInPicture window
 --  3: Float splash / dialogs at the center of the screen
 customManageHook :: ManageHook
-customManageHook =
-  composeAll
-    [ floats --> doCenterFloat,
-      isPictureInPicture --> doSideFloat SE <+> doCopyToAll,
-      namedScratchpadManageHook scratchpads
-    ]
+customManageHook = (floats --> doCenterFloat) <+> namedScratchpadManageHook scratchpads
   where
-    floats =
-      foldr1
-        (<||>)
-        [ isDialog,
-          isSplash,
-          (title =? "win0" <||> title =? "win2") <&&> className =? "jetbrains-phpstorm"
-        ]
-    doCopyToAll = do
-      w <- ask
-      doF (\ws -> foldr (copyWindow w) ws $ currentWorkspaces ws)
+    floats = isDialog <||> isSplash <||> ((title =? "win0" <||> title =? "win2") <&&> className =? "jetbrains-phpstorm")
 
 -- | List of available window layouts with modifiers
 customLayout =
@@ -189,14 +143,13 @@ customLayout =
     . spaced
     . minimize
     . BW.boringAuto
-    . mkToggle (single FULL)
     $ Tall 1 (3 / 100) (1 / 2)
-      ||| Full
-      ||| ThreeColMid 1 (3/100) (1/2)
+      ||| Simplest
+      ||| ThreeColMid 1 (3 / 100) (1 / 2)
       ||| Grid
   where
     spaced = spacingRaw True (Border 0 0 0 0) True (Border 10 10 10 10) True
-  
+
 -- Definition of named scratchpads
 scratchpads :: [NamedScratchpad]
 scratchpads =
@@ -207,55 +160,21 @@ scratchpads =
   where
     floatAndHide = doRectFloat (W.RationalRect (1 / 8) (1 / 8) (3 / 4) (3 / 4)) <+> noTaskbar
 
--- --------------------------------------------
--- Misc themes
--- --------------------------------------------
-
--- | Configuration for the tabbed layout
-tabConfig :: Theme
-tabConfig =
-  def
-    { fontName = "xft:Sans",
-      decoHeight = 35
-    }
-
-historyBackward = do
-  wks <- workspaceHistory
-  whenJust (lastWorkspace wks) doView
-  where
-    lastWorkspace = listToMaybe . reverse
-    doView w = windows $ greedyView w
-
-historyForward = do
-  wks <- workspaceHistory
-  whenJust (firstWorkspace wks) doView
-  where
-    firstWorkspace = listToMaybe
-    doView w = windows $ greedyView w
-
 -------------------------------------------
 -- Workspace action prompts
 -------------------------------------------
 
 createOrSwitchWks :: X ()
-createOrSwitchWks =
-  workspacesPrompt "create or switch"
-    ?+ (\name -> switchProject (Project name "~/" Nothing))
+createOrSwitchWks = workspacesPrompt "create or switch" ?+ (\n -> switchProject (Project n "~/" Nothing))
 
 shiftToWks :: X ()
-shiftToWks =
-  workspacesPrompt "shift window"
-    ?+ (\name -> shiftToProject (Project name "~/" Nothing))
+shiftToWks = workspacesPrompt "shift window" ?+ (\n -> shiftToProject (Project n "~/" Nothing))
 
 renameWks :: X ()
 renameWks = workspacesPrompt "rename" ?+ renameWorkspaceByName
 
--- -------------------------------------------
--- Helper functions
--- -------------------------------------------
-
 -- | Displays a graphical prompt that returns the user choice as a String
-runPrompt :: MonadIO m => String -> [String] -> m String
+runPrompt :: (MonadIO m) => String -> [String] -> m String
 runPrompt prompt choices = runProcessWithInput "rofi" ["-dmenu", "-p", prompt] $ unlines choices
 
 -- | Displays a prompt listing the available workspaces
@@ -269,12 +188,10 @@ workspacesPrompt prompt = do
   where
     filterScratch = filterOutWs [scratchpadWorkspaceTag]
 
+-- -------------------------------------------
+-- Helper functions
+-- -------------------------------------------
+
 -- | Checks if a window is of type 'splash'
 isSplash :: Query Bool
 isSplash = isInProperty "_NET_WM_WINDOW_TYPE" "_NET_WM_WINDOW_TYPE_SPLASH"
-
-isPictureInPicture :: Query Bool
-isPictureInPicture = appName =? "Toolkit" <&&> className =? "firefox"
-
-currentWorkspaces :: W.StackSet i l a s sd -> [i]
-currentWorkspaces = map W.tag . W.workspaces
