@@ -1,5 +1,5 @@
-{-# OPTIONS_GHC -Wno-deferred-out-of-scope-variables #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS_GHC -Wno-deferred-out-of-scope-variables #-}
 
 import Data.Char (isSpace)
 import Data.List (sort)
@@ -16,6 +16,7 @@ import XMonad.Hooks.EwmhDesktops
 import XMonad.Hooks.ManageDocks
 import XMonad.Hooks.ManageHelpers
 import XMonad.Hooks.Minimize
+import XMonad.Hooks.TaffybarPagerHints
 import XMonad.Hooks.WorkspaceHistory
 import qualified XMonad.Layout.BoringWindows as BW
 import XMonad.Layout.Grid
@@ -42,6 +43,7 @@ main =
     . docks
     . addEwmhWorkspaceSort (pure $ filterOutWs [scratchpadWorkspaceTag])
     . ewmhFullscreen
+    . pagerHints
     . ewmh
     . dynamicProjects []
     $ customConfig
@@ -195,3 +197,7 @@ workspacesPrompt prompt = do
 -- | Checks if a window is of type 'splash'
 isSplash :: Query Bool
 isSplash = isInProperty "_NET_WM_WINDOW_TYPE" "_NET_WM_WINDOW_TYPE_SPLASH"
+
+-- -------------------------------------------
+-- Custom Layout
+-- -------------------------------------------
